@@ -1,0 +1,6 @@
+{
+  "name": "پشکنەری بەرید",
+  "description": "ئەپڵیکەیشنی ناسینەوە و پشکنینی پاکێجی بەرید بە وێنە بۆ کارمەندانی گەیاندن و دیاریکردنی نرخ و کڕیار",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
