@@ -23,16 +23,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ☕ Set up JDK 17
+      - name: ☕ Set up JDK 21 (Required for AGP 9 & KSP)
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: 🐘 Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 9.3.1
+        uses: gradle/actions/setup-gradle@v4
 
       - name: 🔑 Restore Debug Keystore
         run: |
@@ -48,12 +46,16 @@ jobs:
         run: chmod +x gradlew
 
       - name: 🔨 Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace -Dkotlin.compiler.execution.strategy=in-process
 
       - name: 📦 Locate Generated APK
         id: find_apk
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: No APK file found in app/build/outputs/apk/debug/"
+            exit 1
+          fi
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
