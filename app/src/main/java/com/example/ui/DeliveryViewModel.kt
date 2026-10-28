@@ -36,10 +36,7 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
     init {
         val dao = AppDatabase.getDatabase(application).parcelDao()
         repository = ParcelRepository(application, dao)
-
-        viewModelScope.launch {
-            repository.seedSampleParcelIfEmpty()
-        }
+        // Clean start - no auto-seeding of fake packages into user database
     }
 
     private val _currentScreen = MutableStateFlow<AppScreen>(AppScreen.Home)
@@ -213,11 +210,22 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val pendingList = repository.getPendingParcelsList()
             val evaluation = withContext(Dispatchers.Default) {
-                VisualMatcher.findBestMatch(bitmap, pendingList, minConfidenceThreshold = 55)
+                VisualMatcher.findBestMatchWithOcr(bitmap, pendingList)
             }
             _isMatching.value = false
             _matchEvaluation.value = evaluation
         }
+    }
+
+    fun manuallySelectCandidate(parcel: ParcelEntity) {
+        val currentEval = _matchEvaluation.value
+        _matchEvaluation.value = MatchEvaluation(
+            parcel = parcel,
+            confidencePercent = 100,
+            isMatch = true,
+            matchReason = "دەستنیشانکراوی دەستی لەلایەن بەکارهێنەرەوە",
+            allPendingCandidates = currentEval?.allPendingCandidates ?: emptyList()
+        )
     }
 
     fun testWithSampleParcel() {

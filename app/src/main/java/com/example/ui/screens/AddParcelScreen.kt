@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -14,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,7 +30,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -53,8 +53,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -79,6 +77,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.AppScreen
 import com.example.ui.DeliveryViewModel
 import com.example.ui.components.AppUtils
+import com.example.ui.components.LiveCameraView
 import com.example.ui.theme.CardBackground
 import com.example.ui.theme.ExpressOrange
 import com.example.ui.theme.NavyDark
@@ -87,7 +86,7 @@ import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.SuccessGreenLight
 import com.example.ui.theme.TextMuted
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddParcelScreen(
     viewModel: DeliveryViewModel,
@@ -108,36 +107,30 @@ fun AddParcelScreen(
     var deliveryAddress by remember { mutableStateOf("") }
     var sellerName by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-    var autoSaveEnabled by remember { mutableStateOf(false) }
-    var autoExtractedSuccess by remember { mutableStateOf(false) }
+    var extractionFinished by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    fun processBitmapWithAutoExtraction(bitmap: Bitmap) {
+    fun processBitmapWithOcr(bitmap: Bitmap) {
         selectedBitmap = bitmap
         errorMessage = null
 
-        if (autoSaveEnabled) {
-            viewModel.autoSaveFromBitmap(bitmap) {
-                viewModel.navigateTo(AppScreen.Home)
-            }
-        } else {
-            viewModel.extractInfoFromBitmap(bitmap) { extracted ->
+        viewModel.extractInfoFromBitmap(bitmap) { extracted ->
+            if (extracted.price > 0L) {
                 priceText = extracted.price.toString()
-                recipientPhone = extracted.recipientPhone
-                deliveryAddress = extracted.deliveryAddress
-                recipientName = extracted.recipientName
-                sellerName = extracted.sellerName
-                notes = extracted.notes
-                autoExtractedSuccess = true
             }
-        }
-    }
-
-    val takePictureLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap: Bitmap? ->
-        if (bitmap != null) {
-            processBitmapWithAutoExtraction(bitmap)
+            if (extracted.recipientPhone.isNotEmpty()) {
+                recipientPhone = extracted.recipientPhone
+            }
+            if (extracted.deliveryAddress.isNotEmpty()) {
+                deliveryAddress = extracted.deliveryAddress
+            }
+            if (extracted.sellerName.isNotEmpty()) {
+                sellerName = extracted.sellerName
+            }
+            if (extracted.notes.isNotEmpty()) {
+                notes = extracted.notes
+            }
+            extractionFinished = true
         }
     }
 
@@ -147,7 +140,7 @@ fun AddParcelScreen(
         if (uri != null) {
             val bitmap = viewModel.loadBitmapFromUri(uri)
             if (bitmap != null) {
-                processBitmapWithAutoExtraction(bitmap)
+                processBitmapWithOcr(bitmap)
             }
         }
     }
@@ -156,29 +149,11 @@ fun AddParcelScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "تۆمارکردن بە وێنە (خۆکار)",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(ExpressOrange)
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "AI",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
+                    Text(
+                        text = "تۆمارکردنی کاڵا بە وێنە",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -205,61 +180,7 @@ fun AddParcelScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Auto-Save Toggle Banner
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (autoSaveEnabled) SuccessGreenLight else Color(0xFFF1F5F9)
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = if (autoSaveEnabled) SuccessGreen else NavyPrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "تۆمارکردنی یەکسەر (خۆکار)",
-                                fontWeight = FontWeight.Bold,
-                                color = NavyDark,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                text = if (autoSaveEnabled)
-                                    "بە گرتنی وێنەکە دەستبەجێ زانیارییەکان دەردەهێنرێت و پاشەکەوت دەبێت"
-                                else
-                                    "زانیارییەکان دەردەهێنرێت و پێش پاشەکەوتکردن دەیبینیت",
-                                color = TextMuted,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = autoSaveEnabled,
-                        onCheckedChange = { autoSaveEnabled = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = SuccessGreen
-                        )
-                    )
-                }
-            }
-
-            // Photo Selection Section
+            // Camera / Image Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(16.dp),
@@ -267,54 +188,70 @@ fun AddParcelScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (selectedBitmap == null) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(190.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(2.dp, ExpressOrange.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                                .background(Color(0xFFF8FAFC))
-                                .clickable { takePictureLauncher.launch() },
-                            contentAlignment = Alignment.Center
+                        // Live Camera to snap photo of package
+                        LiveCameraView(
+                            onPhotoCaptured = { bitmap ->
+                                processBitmapWithOcr(bitmap)
+                            }
+                        )
+
+                        // Choose from gallery or test sample
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(CircleShape)
-                                        .background(ExpressOrange),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PhotoCamera,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(30.dp)
+                            OutlinedButton(
+                                onClick = {
+                                    pickPhotoLauncher.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                        )
                                     )
-                                }
-                                Text(
-                                    text = "📸 وێنەی لەزگەی پاکێجەکە بگرە",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = NavyDark
-                                )
-                                Text(
-                                    text = "خۆکارانە نرخ و مۆبایل و ناونیشان دەردەهێنێت بەبێ دەستلێدان!",
-                                    fontSize = 12.sp,
-                                    color = ExpressOrange,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("لە گەلەری")
+                            }
+
+                            Button(
+                                onClick = {
+                                    try {
+                                        val stream = context.assets.open("sample_parcel.jpg")
+                                        val bmp = BitmapFactory.decodeStream(stream)
+                                        stream.close()
+                                        if (bmp != null) {
+                                            processBitmapWithOcr(bmp)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFEF3C7),
+                                    contentColor = Color(0xFFB45309)
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Science, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("دانانی وێنەی نموونە", fontSize = 11.sp)
                             }
                         }
                     } else {
+                        // Display snapped photo
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -342,116 +279,33 @@ fun AddParcelScreen(
                                     ) {
                                         CircularProgressIndicator(color = ExpressOrange)
                                         Text(
-                                            text = "⚡ دەرهێنانی خۆکارانەی نرخ و زانیاری لە وێنەکە...",
+                                            text = "خوێندنەوەی لەزگەی پاکێجەکە...",
                                             color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
+                                            fontWeight = FontWeight.Bold
                                         )
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // Photo Action Buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = { takePictureLauncher.launch() },
-                            colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                        // Re-take photo button
+                        OutlinedButton(
+                            onClick = {
+                                selectedBitmap = null
+                                extractionFinished = false
+                            },
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(imageVector = Icons.Default.PhotoCamera, contentDescription = null)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("گرتنی وێنە")
+                            Text("وێنەیەکی تر بگرەوە")
                         }
-
-                        OutlinedButton(
-                            onClick = {
-                                pickPhotoLauncher.launch(
-                                    androidx.activity.result.PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                                    )
-                                )
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("لە گەلەری")
-                        }
-                    }
-
-                    // Test with sample Postyar photo
-                    Button(
-                        onClick = {
-                            try {
-                                val stream = context.assets.open("sample_parcel.jpg")
-                                val bmp = BitmapFactory.decodeStream(stream)
-                                stream.close()
-                                if (bmp != null) {
-                                    processBitmapWithAutoExtraction(bmp)
-                                }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFEF3C7),
-                            contentColor = Color(0xFFB45309)
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(imageVector = Icons.Default.Science, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "🧪 تاقیکردنەوەی دەرهێنانی ئۆتۆماتیک بە وێنەی نموونە",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
                     }
                 }
             }
 
-            // Auto-extracted success banner
-            AnimatedVisibility(visible = autoExtractedSuccess) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SuccessGreenLight)
-                        .padding(12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = SuccessGreen,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "✅ زانیارییەکان (نرخ، ناونیشان، مۆبایل) بە سەرکەوتوویی لە وێنەکە دەرهێنران!",
-                            color = SuccessGreen,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-
-            // Extracted Fields (Pre-filled automatically, can be edited if needed)
+            // Information Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(16.dp),
@@ -462,43 +316,22 @@ fun AddParcelScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "زانیارییە دەرهێنراوەکانی کاڵا",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = NavyDark
-                        )
-                        if (autoExtractedSuccess) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(SuccessGreen)
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = "دەرهێنراو لە وێنە",
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = "زانیاری کاڵا بۆ پاشەکەوتکردن",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = NavyDark
+                    )
 
-                    // Price Field
+                    // 1. Price
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedTextField(
                             value = priceText,
                             onValueChange = { input ->
                                 if (input.all { it.isDigit() }) priceText = input
                             },
-                            label = { Text("نرخ بە گەیاندنەوە (دینار IQD) *") },
-                            placeholder = { Text("خۆکارانە لە وێنە دەردەهێنرێت") },
+                            label = { Text("نرخ بە دینار (IQD) *") },
+                            placeholder = { Text("نرخ دیاری بکە") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
@@ -508,11 +341,12 @@ fun AddParcelScreen(
                         )
 
                         // Quick Price Chips
-                        Row(
+                        FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            listOf(10000L, 25000L, 35000L, 47000L).forEach { amount ->
+                            listOf(5000L, 10000L, 15000L, 25000L, 35000L, 45000L, 47000L, 50000L).forEach { amount ->
                                 FilterChip(
                                     selected = priceText == amount.toString(),
                                     onClick = { priceText = amount.toString() },
@@ -522,28 +356,47 @@ fun AddParcelScreen(
                         }
                     }
 
-                    // Delivery Address
-                    OutlinedTextField(
-                        value = deliveryAddress,
-                        onValueChange = { deliveryAddress = it },
-                        label = { Text("ناونیشانی گەیاندن *") },
-                        placeholder = { Text("بۆ نموونە: هەولێر / مام زاوا") },
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, tint = ExpressOrange)
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("address_input_field")
-                    )
+                    // 2. Delivery Address
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = deliveryAddress,
+                            onValueChange = { deliveryAddress = it },
+                            label = { Text("ناونیشانی گەیاندن *") },
+                            placeholder = { Text("شار یان گەڕەک دیاری بکە") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, tint = ExpressOrange)
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("address_input_field")
+                        )
 
-                    // Customer Phone
+                        // Quick City Chips
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf("هەولێر", "سلێمانی", "دهۆک", "کەرکووک", "زاخۆ", "سۆران", "ڕانیە", "هەڵەبجە", "مام زاوا").forEach { city ->
+                                FilterChip(
+                                    selected = deliveryAddress.contains(city),
+                                    onClick = {
+                                        deliveryAddress = if (deliveryAddress.isBlank()) city else "$city / $deliveryAddress"
+                                    },
+                                    label = { Text(city, fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. Customer Phone
                     OutlinedTextField(
                         value = recipientPhone,
                         onValueChange = { recipientPhone = it },
                         label = { Text("ژمارەی مۆبایلی کڕیار *") },
-                        placeholder = { Text("بۆ نموونە: 07507496271") },
+                        placeholder = { Text("0750xxxxxxx") },
                         leadingIcon = {
                             Icon(imageVector = Icons.Default.Call, contentDescription = null, tint = NavyPrimary)
                         },
@@ -555,11 +408,11 @@ fun AddParcelScreen(
                             .testTag("phone_input_field")
                     )
 
-                    // Notes / Seller Name
+                    // 4. Notes / Seller
                     OutlinedTextField(
                         value = notes,
                         onValueChange = { notes = it },
-                        label = { Text("تێبینی یان فرۆشیار") },
+                        label = { Text("تێبینی یان فرۆشیار (ئارەزوومەندانە)") },
                         leadingIcon = {
                             Icon(imageVector = Icons.Default.Notes, contentDescription = null)
                         },
@@ -579,7 +432,7 @@ fun AddParcelScreen(
                 )
             }
 
-            // Manual / Confirm Save Button
+            // Save Button
             Button(
                 onClick = {
                     val price = priceText.toLongOrNull()
@@ -588,10 +441,10 @@ fun AddParcelScreen(
                             errorMessage = "تکایە سەرەتا وێنەی لەزگەی پاکێجەکە بگرە"
                         }
                         price == null || price <= 0 -> {
-                            errorMessage = "تکایە نرخ بە دروستی بنووسە"
+                            errorMessage = "تکایە نرخ دیاری بکە"
                         }
                         deliveryAddress.isBlank() -> {
-                            errorMessage = "تکایە ناونیشانی گەیاندن بنووسە"
+                            errorMessage = "تکایە ناونیشانی گەیاندن دیاری بکە"
                         }
                         recipientPhone.isBlank() -> {
                             errorMessage = "تکایە ژمارەی تەلەفۆنی کڕیار بنووسە"
@@ -600,7 +453,7 @@ fun AddParcelScreen(
                             viewModel.saveParcel(
                                 bitmap = selectedBitmap!!,
                                 price = price,
-                                recipientName = recipientName,
+                                recipientName = recipientName.ifBlank { "کڕیار" },
                                 recipientPhone = recipientPhone,
                                 deliveryAddress = deliveryAddress,
                                 sellerName = sellerName,

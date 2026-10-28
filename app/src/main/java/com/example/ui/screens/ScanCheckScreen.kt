@@ -4,16 +4,18 @@ import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,19 +25,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Science
@@ -50,17 +49,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,25 +96,6 @@ fun ScanCheckScreen(
     val isMatching by viewModel.isMatching.collectAsStateWithLifecycle()
     val matchEvaluation by viewModel.matchEvaluation.collectAsStateWithLifecycle()
     val scanBitmap by viewModel.currentScanBitmap.collectAsStateWithLifecycle()
-
-    var autoRemoveEnabled by remember { mutableStateOf(false) }
-
-    LaunchedEffect(matchEvaluation, autoRemoveEnabled) {
-        val eval = matchEvaluation
-        if (autoRemoveEnabled && eval != null && eval.isMatch) {
-            viewModel.markAsDelivered(eval.parcel.id) {
-                viewModel.navigateTo(AppScreen.Home)
-            }
-        }
-    }
-
-    val takePictureLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap: Bitmap? ->
-        if (bitmap != null) {
-            viewModel.checkParcelByImage(bitmap)
-        }
-    }
 
     val pickPhotoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -170,61 +144,7 @@ fun ScanCheckScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Auto-Remove Toggle Card
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (autoRemoveEnabled) SuccessGreenLight else Color(0xFFF1F5F9)
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = if (autoRemoveEnabled) SuccessGreen else NavyPrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "لابردنی دەستبەجێ کاتی دۆزینەوە (Auto-Remove)",
-                                fontWeight = FontWeight.Bold,
-                                color = NavyDark,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                text = if (autoRemoveEnabled)
-                                    "بە دۆزینەوەی وێنەکە دەستبەجێ لە سیستەم لادەبرێت و دەگاتە ئەرشیف"
-                                else
-                                    "دوای دۆزینەوە، زانیارییەکان پێشان دەدات بۆ پەسەندکردن",
-                                color = TextMuted,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = autoRemoveEnabled,
-                        onCheckedChange = { autoRemoveEnabled = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = SuccessGreen
-                        )
-                    )
-                }
-            }
-
-            // Camera / Photo Action Card
+            // Live Camera or Captured Photo Box
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(16.dp),
@@ -232,19 +152,60 @@ fun ScanCheckScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (scanBitmap == null) {
-                        // Live in-app CameraX view with viewfinder
+                        // Live in-app CameraX feed with viewfinder
                         LiveCameraView(
                             onPhotoCaptured = { bitmap ->
                                 viewModel.checkParcelByImage(bitmap)
                             }
                         )
+
+                        // Secondary options
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.clearScan()
+                                    pickPhotoLauncher.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                        )
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("لە گەلەری")
+                            }
+
+                            Button(
+                                onClick = { viewModel.testWithSampleParcel() },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFEF3C7),
+                                    contentColor = Color(0xFFB45309)
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Science, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("تاقیکردنەوە بە نموونە", fontSize = 11.sp)
+                            }
+                        }
                     } else {
-                        // Display the captured query bitmap
+                        // Showing Captured Photo Preview
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -256,7 +217,7 @@ fun ScanCheckScreen(
                         ) {
                             Image(
                                 bitmap = scanBitmap!!.asImageBitmap(),
-                                contentDescription = "وێنەی پشکنراو",
+                                contentDescription = "وێنەی گیراو",
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -265,16 +226,16 @@ fun ScanCheckScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.65f)),
+                                        .background(Color.Black.copy(alpha = 0.7f)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         CircularProgressIndicator(color = ExpressOrange)
                                         Text(
-                                            text = "شیکردنەوە و بەراوردکردنی وێنە...",
+                                            text = "پشکنینی ورد و بەراوردکردن...",
                                             color = Color.White,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -282,67 +243,20 @@ fun ScanCheckScreen(
                                 }
                             }
                         }
-                    }
 
-                    if (scanBitmap != null) {
+                        // Re-take / Clear button
                         Button(
                             onClick = { viewModel.clearScan() },
                             colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp)
+                                .height(46.dp)
                         ) {
                             Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("📸 وێنەیەکی تر بگرەوە (کردنەوەی کامێرا)")
+                            Text("📸 کردنەوەی کامێرا بۆ وێنەیەکی تر")
                         }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.clearScan()
-                                pickPhotoLauncher.launch(
-                                    androidx.activity.result.PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                                    )
-                                )
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("لە گەلەری")
-                        }
-                    }
-
-                    // Test with Sample Parcel button
-                    Button(
-                        onClick = { viewModel.testWithSampleParcel() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFEF3C7),
-                            contentColor = Color(0xFFB45309)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("test_sample_parcel_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.Science, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "🧪 تاقیکردنەوە بە پاکێجی نموونە (Postyar)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
                     }
                 }
             }
@@ -355,7 +269,7 @@ fun ScanCheckScreen(
                     enter = fadeIn() + slideInVertically()
                 ) {
                     if (eval.isMatch) {
-                        // MATCH FOUND!
+                        // MATCH FOUND
                         val parcel = eval.parcel
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CardBackground),
@@ -367,10 +281,10 @@ fun ScanCheckScreen(
                                 .testTag("match_found_card")
                         ) {
                             Column(
-                                modifier = Modifier.padding(18.dp),
+                                modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
-                                // Match Banner
+                                // Match Status Header
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -387,12 +301,13 @@ fun ScanCheckScreen(
                                             modifier = Modifier.size(24.dp)
                                         )
                                         Text(
-                                            text = "کاڵاکە دۆزرایەوە لەناو سیستەم!",
+                                            text = "ئەم کاڵایە دۆزرایەوە!",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = SuccessGreen
                                         )
                                     }
+
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
@@ -400,7 +315,7 @@ fun ScanCheckScreen(
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
                                         Text(
-                                            text = "هاوشێوەیی: %${eval.confidencePercent}",
+                                            text = "دڵنیایی: %${eval.confidencePercent}",
                                             color = SuccessGreen,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp
@@ -408,13 +323,78 @@ fun ScanCheckScreen(
                                     }
                                 }
 
-                                // Prominent Price Highlight
+                                if (eval.matchReason.isNotBlank()) {
+                                    Text(
+                                        text = "هۆکاری هاوتایی: ${eval.matchReason}",
+                                        color = TextMuted,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                // Photo Comparison (Side by side)
+                                val savedFile = File(parcel.photoPath)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    if (scanBitmap != null) {
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "وێنەی گیراو ئێستا",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextMuted,
+                                                fontSize = 11.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Image(
+                                                bitmap = scanBitmap!!.asImageBitmap(),
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(110.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
+                                            )
+                                        }
+                                    }
+
+                                    if (savedFile.exists()) {
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "وێنەی سەرەکی تۆمارکراو",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextMuted,
+                                                fontSize = 11.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            AsyncImage(
+                                                model = savedFile,
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(110.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Big Price Banner
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(ExpressOrange)
-                                        .padding(16.dp),
+                                        .padding(14.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -432,26 +412,24 @@ fun ScanCheckScreen(
                                     }
                                 }
 
-                                // Parcel Details Box
+                                // Parcel Details
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(Color(0xFFF8FAFC))
-                                        .padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     if (parcel.deliveryAddress.isNotBlank()) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
                                                 imageVector = Icons.Default.LocationOn,
                                                 contentDescription = null,
                                                 tint = ExpressOrange,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp)
                                             )
+                                            Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = "ناونیشان: ${parcel.deliveryAddress}",
                                                 fontWeight = FontWeight.Bold,
@@ -466,118 +444,86 @@ fun ScanCheckScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(
                                                     imageVector = Icons.Default.Call,
                                                     contentDescription = null,
                                                     tint = NavyPrimary,
-                                                    modifier = Modifier.size(18.dp)
+                                                    modifier = Modifier.size(16.dp)
                                                 )
+                                                Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = "ژمارەی کڕیار: ${parcel.recipientPhone}",
+                                                    text = "مۆبایل: ${parcel.recipientPhone}",
                                                     fontWeight = FontWeight.Medium,
                                                     color = NavyPrimary
                                                 )
                                             }
 
                                             Button(
-                                                onClick = {
-                                                    AppUtils.dialPhoneNumber(context, parcel.recipientPhone)
-                                                },
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = NavyPrimary
-                                                ),
+                                                onClick = { AppUtils.dialPhoneNumber(context, parcel.recipientPhone) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                                                 shape = RoundedCornerShape(8.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Call,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("پەیوەندی", fontSize = 12.sp)
+                                                Text("تەلەفۆن", fontSize = 11.sp)
                                             }
-                                        }
-                                    }
-
-                                    if (parcel.recipientName.isNotBlank()) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Person,
-                                                contentDescription = null,
-                                                tint = TextMuted,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = "ناوی کڕیار: ${parcel.recipientName}",
-                                                color = TextMuted,
-                                                fontSize = 13.sp
-                                            )
                                         }
                                     }
 
                                     if (parcel.notes.isNotBlank()) {
                                         Text(
-                                            text = "تێبینی لەزگە: ${parcel.notes}",
+                                            text = "تێبینی: ${parcel.notes}",
                                             color = TextMuted,
                                             fontSize = 12.sp
                                         )
                                     }
                                 }
 
-                                // Registered Photo Preview
-                                val savedFile = File(parcel.photoPath)
-                                if (savedFile.exists()) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                // Safety Prompt: Never delete without explicit click!
+                                Text(
+                                    text = "ئایا دڵنیایت ئەم پاکێجەت گەیاندووە؟",
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyDark,
+                                    fontSize = 14.sp
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    // NO - Return without deleting
+                                    OutlinedButton(
+                                        onClick = { viewModel.clearScan() },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(50.dp)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Close, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("نەخێر، ئەمە نییە")
+                                    }
+
+                                    // YES - Confirm Delivery & Remove
+                                    Button(
+                                        onClick = {
+                                            viewModel.markAsDelivered(parcel.id) {
+                                                viewModel.navigateTo(AppScreen.Home)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1.3f)
+                                            .height(50.dp)
+                                            .testTag("mark_delivered_and_remove_button")
+                                    ) {
+                                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "وێنەی تۆمارکراوی پێشوەختە:",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextMuted
-                                        )
-                                        AsyncImage(
-                                            model = savedFile,
-                                            contentDescription = "وێنەی تۆمارکراو",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(130.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
+                                            text = "بەڵێ، گەیەندراوە (لابردن)",
+                                            fontWeight = FontWeight.Bold
                                         )
                                     }
-                                }
-
-                                // Crucial User Action: "گەیەندرا و لایدە لە سیستەم"
-                                Button(
-                                    onClick = {
-                                        viewModel.markAsDelivered(parcel.id) {
-                                            viewModel.navigateTo(AppScreen.Home)
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(54.dp)
-                                        .testTag("mark_delivered_and_remove_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "✅ گەیەندرا - ئێستا لە سیستەم لایدە",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp
-                                    )
                                 }
                             }
                         }
@@ -603,14 +549,14 @@ fun ScanCheckScreen(
                                     modifier = Modifier.size(42.dp)
                                 )
                                 Text(
-                                    text = "ئەم کاڵایە لە لیستی چاوەڕوانکراودا نییە",
+                                    text = "هیچ کاڵایەکی هاوشێوە نەدۆزرایەوە",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFFEF4444),
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
-                                    text = "ڕەنگە ئەم کاڵایە پێشتر گەیاندرابێت و لە سیستەم لابرا بێت، یان وێنەکە ناڕوون بێت.",
+                                    text = "ئەم کاڵایە لە لیستی چاوەڕوانکراودا نییە یان پێشتر گەیاندرابێت. بۆیە هیچ کاڵایەک لە سیستەم لانەدرا.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextMuted,
                                     textAlign = TextAlign.Center
@@ -621,10 +567,7 @@ fun ScanCheckScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     OutlinedButton(
-                                        onClick = {
-                                            viewModel.clearScan()
-                                            takePictureLauncher.launch()
-                                        },
+                                        onClick = { viewModel.clearScan() },
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
@@ -638,6 +581,112 @@ fun ScanCheckScreen(
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Text("تۆمارکردن")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Manual candidate selection list (Allows courier to manually select the right parcel if OCR missed it)
+                    if (eval.allPendingCandidates.isNotEmpty()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = CardBackground),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "📦 کاڵاکانی تری چاوەڕوانکراو (دەتوانیت کاڵای دروست دەستنیشان بکەیت):",
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyDark,
+                                    fontSize = 13.sp
+                                )
+
+                                eval.allPendingCandidates.forEach { candidate ->
+                                    val isCurrent = eval.isMatch && eval.parcel.id == candidate.id
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isCurrent) SuccessGreenLight else Color(0xFFF8FAFC)
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = if (isCurrent) BorderStroke(1.5.dp, SuccessGreen) else null,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.manuallySelectCandidate(candidate)
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                val cFile = File(candidate.photoPath)
+                                                if (cFile.exists()) {
+                                                    AsyncImage(
+                                                        model = cFile,
+                                                        contentDescription = null,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .size(46.dp)
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                    )
+                                                }
+
+                                                Column {
+                                                    Text(
+                                                        text = AppUtils.formatIqdPrice(candidate.price),
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ExpressOrange,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    if (candidate.deliveryAddress.isNotBlank()) {
+                                                        Text(
+                                                            text = candidate.deliveryAddress,
+                                                            color = NavyDark,
+                                                            fontSize = 12.sp,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                    if (candidate.recipientPhone.isNotBlank()) {
+                                                        Text(
+                                                            text = candidate.recipientPhone,
+                                                            color = TextMuted,
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            if (isCurrent) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = SuccessGreen,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            } else {
+                                                OutlinedButton(
+                                                    onClick = { viewModel.manuallySelectCandidate(candidate) },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text("هەڵبژاردن", fontSize = 11.sp)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

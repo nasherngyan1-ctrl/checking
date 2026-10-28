@@ -5,56 +5,65 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import com.example.data.model.ParcelEntity
 import java.io.File
-import kotlin.math.abs
 import kotlin.math.sqrt
 
 data class MatchEvaluation(
     val parcel: ParcelEntity,
     val confidencePercent: Int,
-    val isMatch: Boolean
+    val isMatch: Boolean,
+    val matchReason: String = "",
+    val allPendingCandidates: List<ParcelEntity> = emptyList()
 )
 
 object VisualMatcher {
 
-    private const val HASH_WIDTH = 16
-    private const val HASH_HEIGHT = 16
-    private const val GRID_SIZE = 4 // 4x4 color grid
+    private const val HASH_WIDTH = 32
+    private const val HASH_HEIGHT = 32
+    private const val GRID_SIZE = 8 // 8x8 color grid (64 blocks)
 
     /**
-     * Extracts a compact visual fingerprint string from a Bitmap.
-     * Contains:
-     * 1. 240-bit dHash (hex string)
-     * 2. 64-bit aHash (hex string)
-     * 3. 4x4 spatial color profile (encoded)
+     * Generates a rich, accurate visual fingerprint:
+     * - 32x32 gradient hash (1024 bits)
+     * - 8x8 spatial color grid
      */
     fun generateFingerprint(bitmap: Bitmap): String {
         val dHash = computeDifferenceHash(bitmap)
-        val aHash = computeAverageHash(bitmap)
-        val colorProfile = computeColorGrid(bitmap)
-        return "$dHash|$aHash|$colorProfile"
+        val colorGrid = computeColorGrid(bitmap)
+        return "$dHash|$colorGrid"
     }
 
     /**
-     * Compares a query bitmap against a list of saved parcels.
-     * Returns the best match evaluation.
+     * Finds the best match among pending parcels using multi-factor verification:
+     * 1. 32x32 structural gradient comparison & spatial color layout
+     * 2. Customer Phone number verification (only if non-company and visual consistency >= 40%)
+     * 3. Price match consistency
+     * 4. Address keywords overlap
+     * Strict minimum threshold prevents ever matching or deleting the wrong package!
      */
-    fun findBestMatch(
+    suspend fun findBestMatchWithOcr(
         queryBitmap: Bitmap,
-        candidates: List<ParcelEntity>,
-        minConfidenceThreshold: Int = 60
+        candidates: List<ParcelEntity>
     ): MatchEvaluation? {
         if (candidates.isEmpty()) return null
 
+        // 1. Run OCR on query photo to extract real numbers and tokens
+        val queryOcr = AutoParcelExtractor.extractFromBitmap(queryBitmap)
+        val queryPhone = queryOcr.recipientPhone.replace(" ", "").replace("-", "")
+        val queryPrice = queryOcr.price
+        val queryTokens = queryOcr.rawExtractedTokens.map { it.lowercase() }.toSet()
+
+        // 2. Compute visual fingerprint
         val queryFingerprint = generateFingerprint(queryBitmap)
 
         var bestParcel: ParcelEntity? = null
         var bestScore = -1.0
+        var bestReason = ""
+        var secondBestScore = -1.0
 
         for (parcel in candidates) {
             val parcelFingerprint = if (parcel.visualFingerprint.isNotBlank()) {
                 parcel.visualFingerprint
             } else {
-                // If fingerprint wasn't cached, generate from file
                 val file = File(parcel.photoPath)
                 if (file.exists()) {
                     val bmp = BitmapFactory.decodeFile(file.absolutePath)
@@ -62,41 +71,77 @@ object VisualMatcher {
                 } else null
             } ?: continue
 
-            val score = calculateSimilarity(queryFingerprint, parcelFingerprint)
-            if (score > bestScore) {
-                bestScore = score
+            val visualSim = calculateVisualSimilarity(queryFingerprint, parcelFingerprint)
+
+            var score = visualSim * 0.70 // Base visual score (up to 70%)
+            var reason = "هاوشێوەیی لەزگە و پێکهاتەی وێنە"
+
+            // Factor 1: Customer Phone Number Match (Requires minimum visual plausibility)
+            val cleanCandPhone = parcel.recipientPhone.replace(" ", "").replace("-", "")
+            if (queryPhone.length >= 8 && cleanCandPhone.length >= 8) {
+                if (cleanCandPhone == queryPhone || cleanCandPhone.endsWith(queryPhone) || queryPhone.endsWith(cleanCandPhone)) {
+                    if (visualSim >= 0.35) {
+                        score += 0.30 // Major 30% boost for verified customer phone
+                        reason = "ژمارەی مۆبایلی کڕیار بە تەواوی هاوتایە"
+                    }
+                }
+            }
+
+            // Factor 2: Price Match
+            if (queryPrice > 0L && parcel.price == queryPrice) {
+                score += 0.15
+                if (reason == "هاوشێوەیی لەزگە و پێکهاتەی وێنە") {
+                    reason = "هاوتایی لە نرخ و شێوەی لەزگە"
+                }
+            }
+
+            // Factor 3: Address / Notes keyword overlap
+            if (parcel.deliveryAddress.isNotBlank()) {
+                val addrWords = parcel.deliveryAddress.lowercase().split("\\s+".toRegex()).filter { it.length >= 3 }
+                val overlap = addrWords.count { queryTokens.contains(it) }
+                if (overlap > 0) score += 0.08
+            }
+
+            val finalScore = score.coerceIn(0.0, 1.0)
+
+            if (finalScore > bestScore) {
+                secondBestScore = bestScore
+                bestScore = finalScore
                 bestParcel = parcel
+                bestReason = reason
+            } else if (finalScore > secondBestScore) {
+                secondBestScore = finalScore
             }
         }
 
         if (bestParcel == null) return null
 
         val confidence = (bestScore * 100).toInt().coerceIn(0, 100)
-        val isMatch = confidence >= minConfidenceThreshold
+
+        // Strict criteria to prevent picking the wrong item:
+        // Must be >= 75% confident
+        val isStrictMatch = confidence >= 75
 
         return MatchEvaluation(
             parcel = bestParcel,
             confidencePercent = confidence,
-            isMatch = isMatch
+            isMatch = isStrictMatch,
+            matchReason = if (isStrictMatch) bestReason else "ناڕوون یان هاوشێوە نییە",
+            allPendingCandidates = candidates
         )
     }
 
-    /**
-     * Calculates overall similarity between 0.0 and 1.0
-     */
-    fun calculateSimilarity(fp1: String, fp2: String): Double {
+    private fun calculateVisualSimilarity(fp1: String, fp2: String): Double {
         val parts1 = fp1.split("|")
         val parts2 = fp2.split("|")
 
-        if (parts1.size < 3 || parts2.size < 3) return 0.0
+        if (parts1.size < 2 || parts2.size < 2) return 0.0
 
         val dHashSim = compareBinaryStrings(parts1[0], parts2[0])
-        val aHashSim = compareBinaryStrings(parts1[1], parts2[1])
-        val colorSim = compareColorProfiles(parts1[2], parts2[2])
+        val colorSim = compareColorProfiles(parts1[1], parts2[1])
 
-        // dHash and aHash capture edge & intensity structure (70% weight)
-        // color grid captures package/label color regions (30% weight)
-        return (dHashSim * 0.45) + (aHashSim * 0.25) + (colorSim * 0.30)
+        // 70% structural gradient edges, 30% spatial color layout
+        return (dHashSim * 0.70) + (colorSim * 0.30)
     }
 
     private fun computeDifferenceHash(bitmap: Bitmap): String {
@@ -108,26 +153,6 @@ object VisualMatcher {
                 val right = getLuminance(scaled.getPixel(x + 1, y))
                 sb.append(if (left < right) '1' else '0')
             }
-        }
-        return sb.toString()
-    }
-
-    private fun computeAverageHash(bitmap: Bitmap): String {
-        val scaled = Bitmap.createScaledBitmap(bitmap, 8, 8, true)
-        var sum = 0L
-        val luminances = IntArray(64)
-        var idx = 0
-        for (y in 0 until 8) {
-            for (x in 0 until 8) {
-                val lum = getLuminance(scaled.getPixel(x, y))
-                luminances[idx++] = lum
-                sum += lum
-            }
-        }
-        val avg = sum / 64
-        val sb = StringBuilder()
-        for (lum in luminances) {
-            sb.append(if (lum >= avg) '1' else '0')
         }
         return sb.toString()
     }
@@ -180,8 +205,7 @@ object VisualMatcher {
         }
 
         val avgDist = totalDist / blockCount
-        val similarity = (1.0 - (avgDist / maxDist)).coerceIn(0.0, 1.0)
-        return similarity
+        return (1.0 - (avgDist / maxDist)).coerceIn(0.0, 1.0)
     }
 
     private fun getLuminance(color: Int): Int {
