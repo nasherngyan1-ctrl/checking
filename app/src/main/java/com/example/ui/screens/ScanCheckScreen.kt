@@ -78,6 +78,7 @@ import coil.compose.AsyncImage
 import com.example.ui.AppScreen
 import com.example.ui.DeliveryViewModel
 import com.example.ui.components.AppUtils
+import com.example.ui.components.LiveCameraView
 import com.example.ui.theme.CardBackground
 import com.example.ui.theme.ExpressOrange
 import com.example.ui.theme.NavyDark
@@ -236,48 +237,12 @@ fun ScanCheckScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     if (scanBitmap == null) {
-                        // Viewfinder placeholder
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(2.dp, ExpressOrange.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                                .background(Color(0xFFF8FAFC)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(60.dp)
-                                        .clip(CircleShape)
-                                        .background(ExpressOrange.copy(alpha = 0.15f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DocumentScanner,
-                                        contentDescription = null,
-                                        tint = ExpressOrange,
-                                        modifier = Modifier.size(36.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "وێنەی لەزگەی پاکێجەکە بگرە",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NavyDark
-                                )
-                                Text(
-                                    text = "ئەپڵیکەیشنەکە بە وێنە بەراوردی دەکات لەگەڵ کاڵاکان",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted,
-                                    fontSize = 12.sp
-                                )
+                        // Live in-app CameraX view with viewfinder
+                        LiveCameraView(
+                            onPhotoCaptured = { bitmap ->
+                                viewModel.checkParcelByImage(bitmap)
                             }
-                        }
+                        )
                     } else {
                         // Display the captured query bitmap
                         Box(
@@ -319,28 +284,25 @@ fun ScanCheckScreen(
                         }
                     }
 
-                    // Photo source buttons
+                    if (scanBitmap != null) {
+                        Button(
+                            onClick = { viewModel.clearScan() },
+                            colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("📸 وێنەیەکی تر بگرەوە (کردنەوەی کامێرا)")
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
-                            onClick = {
-                                viewModel.clearScan()
-                                takePictureLauncher.launch()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                                .testTag("take_photo_scan_button")
-                        ) {
-                            Icon(imageVector = Icons.Default.PhotoCamera, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("گرتنی وێنە")
-                        }
-
                         OutlinedButton(
                             onClick = {
                                 viewModel.clearScan()
